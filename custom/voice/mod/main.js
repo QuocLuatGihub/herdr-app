@@ -179,7 +179,7 @@ export default class Voice extends View {
         div().id("voice-target-" + item.address).px(8).py(6).rounded(6)
           .bg(this.target === item.address ? t.selected : t.raised).text_size(12)
           .when(!locked, el => el.cursor_pointer().on_click((_e, cx) => this.select(item.address, cx)))
-          .child((this.target === item.address ? "● " : "○ ") + item.address + " · " + (item.program?.name || item.agent || item.name || "terminal")))))
+          .child((this.target === item.address ? "● " : "○ ") + item.address + " · " + (item.labels?.["custom.agent"] === "codex" ? "Codex" : item.program?.name || item.agent || item.name || "terminal")))))
       .when(!all.length, el => el.child(label("Mở terminal hoặc thêm máy remote trước.")))
       .child(h_flex().gap(6).children(["vi", "en", "auto"].map(lang => button("voice-lang-" + lang,
         lang === "vi" ? "Tiếng Việt" : lang === "en" ? "English" : "Tự nhận", !locked,

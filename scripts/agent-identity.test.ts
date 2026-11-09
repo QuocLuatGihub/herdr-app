@@ -1,0 +1,26 @@
+import { test, expect } from 'bun:test';
+import { readFile } from 'node:fs/promises';
+const source = (await readFile(new URL('../custom/agents/identity.js',import.meta.url),'utf8'))
+  .replace(/^import .*;\n/gm,'').replaceAll('export const ','const ').replaceAll('export function ','function ');
+const {decoratePanes,mergeAgents} = new Function(`${source}; return {decoratePanes,mergeAgents};`)();
+const pane=(terminal:string, app:any=null)=>({pane:'pane-'+terminal,terminal,tab:'remote/tab1',title:'contributor.ai-viet.com.vn',app,program:{name:'screen'},focused:true});
+const terminal=(address:string,marked=true,state='live')=>({address,state,labels:marked?{'custom.agent':'codex'}:{}});
+const spaces=[{id:'remote/s1',name:'Project',tabs:[{id:'remote/tab1',index:1,name:'contributor'}]}];
+test('only the exact marked terminal gets a Codex icon',()=>{
+ const result=decoratePanes([pane('remote/t2'),pane('t2'),pane('remote/t3')],[terminal('remote/t2'),terminal('t2',false),terminal('remote/t3',false)]);
+ expect(result.map((p:any)=>p.program.name)).toEqual(['Codex','screen','screen']);
+});
+test('manual identity adds an unknown-state UI row without claiming idle or working',()=>{
+ const rows=mergeAgents([],[pane('remote/t2')],[terminal('remote/t2')],spaces);
+ expect(rows).toHaveLength(1);
+ expect(rows[0]).toMatchObject({address:'remote/t2',status:'unknown',space:'remote/s1',tab_name:'contributor',app:'codex'});
+});
+test('real agent reports always win and are never duplicated',()=>{
+ const real={address:'remote/t2',status:'working',app:'codex'};
+ expect(mergeAgents([real],[pane('remote/t2','codex')],[terminal('remote/t2')],spaces)).toEqual([real]);
+ expect(decoratePanes([pane('remote/t2','claude-code')],[terminal('remote/t2')])[0].app).toBe('claude-code');
+});
+test('removing a mark or closing the terminal removes its manual agent',()=>{
+ expect(mergeAgents([],[pane('remote/t2')],[terminal('remote/t2',false)],spaces)).toEqual([]);
+ expect(mergeAgents([],[pane('remote/t2')],[terminal('remote/t2',true,'finished')],spaces)).toEqual([]);
+});

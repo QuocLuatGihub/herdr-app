@@ -1059,3 +1059,11 @@ the mod is present; microphone capture never starts automatically.
 
 In the Custom voice layout, Cmd+Option+V or the bottom-right Voice button
 toggles the panel; its header also offers Hide.
+
+## Custom per-terminal agent identity
+
+The fork's personal pane header offers **Gán Codex** / **Bỏ gán** for Screen/tmux
+terminals. The `custom.agent=codex` terminal label changes only Custom UI identity.
+Its Agents row is **Chưa có tín hiệu** until a real status report arrives; native
+reports win. See `custom/agents/README.md`. It does not change core status or
+bypass approvals, and it does not classify every Screen terminal as Codex.
