@@ -43,12 +43,16 @@ def generate(source):
   }
   render(cx) {''')
         needle = '.when(st === "working",'
-        text = text.replace(needle, '''.when(p.manualAgent, el => el.child(div().text_size(10).text_color(t.dim).child("Chưa có tín hiệu")))
+        text = text.replace(needle, '''.when(p.manualAgent && !p.status, el => el.child(div().text_size(10).text_color(t.dim).child("Chưa có tín hiệu")))
       .when(!p.app || p.manualAgent, el => el.child(div().id("mark-codex-" + pane).px(5).py(2).rounded(4)
         .text_size(10).text_color(t.dim).cursor_pointer().hover(s => s.bg(t.hover).text_color(t.foreground))
         .tooltip(this.markError || (p.manualAgent ? "Bỏ gán Codex cho terminal này" : "Gán terminal này là Codex (Screen/tmux)"))
         .on_click((_e, cx) => { cx.stop_propagation(); this.mark(p, cx); }).child(p.manualAgent ? "Bỏ gán" : "Gán Codex")))
       ''' + needle)
+    if source == 'workspace-status':
+        text = 'import { observe } from "./observer.js";\n' + text
+        text = text.replace('export default class WorkspaceStatus extends View {',
+            'export default class WorkspaceStatus extends View {\n  init(_props, cx) { observe(cx); }')
     return text
 
 
@@ -60,6 +64,8 @@ def install(app_home):
         (destination / 'main.js').write_text(generate(source))
         shutil.copy2(ROOT / 'defaults/mods' / source / 'mod.json', destination / 'mod.json')
         shutil.copy2(ROOT / 'custom/agents/identity.js', destination / 'identity.js')
+    for name in ('observer.js', 'status.py'):
+        shutil.copy2(ROOT / 'custom/agents' / name, app_home / 'mods/custom-workspace-status' / name)
     shutil.copytree(ROOT / 'custom/agents/manager', app_home / 'mods/agent-manager', dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns('gpui-kit.d.ts', 'jsconfig.json', '.gitignore'))
     path = app_home / 'layouts/voice-custom.json'

@@ -24,3 +24,12 @@ test('removing a mark or closing the terminal removes its manual agent',()=>{
  expect(mergeAgents([],[pane('remote/t2')],[terminal('remote/t2',false)],spaces)).toEqual([]);
  expect(mergeAgents([],[pane('remote/t2')],[terminal('remote/t2',true,'finished')],spaces)).toEqual([]);
 });
+
+test('daemon status replaces unknown only while fresh and for the exact thread',()=>{
+ const snapshot={at:1000,rows:{'remote/t2':{status:'working',threadId:'thread-1',source:'codex-app-server'}}};
+ expect(mergeAgents([],[pane('remote/t2')],[terminal('remote/t2')],spaces,snapshot,2000)[0].status).toBe('working');
+ expect(mergeAgents([],[pane('remote/t2')],[terminal('remote/t2')],spaces,snapshot,18000)[0].status).toBe('unknown');
+ expect(mergeAgents([],[pane('remote/t3')],[terminal('remote/t3')],spaces,snapshot,2000)[0].status).toBe('unknown');
+ const real={address:'remote/t2',status:'blocked',app:'codex'};
+ expect(mergeAgents([real],[pane('remote/t2','codex')],[terminal('remote/t2')],spaces,snapshot,2000)).toEqual([real]);
+});

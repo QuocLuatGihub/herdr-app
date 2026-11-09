@@ -109,6 +109,8 @@ pub struct TerminalView {
     link: Option<LinkTarget>,
     /// Right-clicks go to the program when it takes the mouse (Shift: the menu).
     pub right_click_to_program: bool,
+    /// Manually identified Codex inside a multiplexer uses transcript paging, not composer history.
+    pub codex_page_scroll: bool,
     grid: Rc<RefCell<Grid>>,
     focus: FocusHandle,
     was_focused: bool,
@@ -246,6 +248,7 @@ impl TerminalView {
             cwd: None,
             link: None,
             right_click_to_program: false,
+            codex_page_scroll: false,
             grid: Rc::new(RefCell::new(Grid {
                 vt: Vt::new(size_hint.0.max(2), size_hint.1.max(1)),
                 core: core.clone(),
@@ -825,11 +828,7 @@ impl TerminalView {
         } else if n == 0 {
             return;
         } else if g.vt.alt_screen() {
-            let key = if up { GHOSTTY_KEY_ARROW_UP } else { GHOSTTY_KEY_ARROW_DOWN };
-            let mut out = Vec::new();
-            for _ in 0..n {
-                out.extend(g.vt.encode_key(key, 0, 0, None, None));
-            }
+            let out = alt_scroll_bytes(&mut g.vt, self.codex_page_scroll, up, n);
             if let Some(ch) = g.channel {
                 g.core.input(ch, &out);
             }
@@ -1160,6 +1159,25 @@ fn scroll_mouse_bytes(vt: &mut Vt, steps: Point<i32>, x: f32, y: f32, size: (u32
         for _ in 0..steps.unsigned_abs() {
             out.extend(vt.encode_mouse(GHOSTTY_MOUSE_ACTION_PRESS, Some(button), 0, x, y, size, false));
         }
+    }
+    out
+}
+
+/// A wheel gesture in Screen/tmux must not recall Codex composer messages.
+/// PageUp/PageDown are Codex transcript navigation keys. Other full-screen
+/// programs retain the existing arrow fallback; mouse-reporting apps bypass this.
+fn alt_scroll_bytes(vt: &mut Vt, codex: bool, up: bool, lines: usize) -> Vec<u8> {
+    if lines == 0 { return Vec::new(); }
+    let key = match (codex, up) {
+        (true, true) => GHOSTTY_KEY_PAGE_UP,
+        (true, false) => GHOSTTY_KEY_PAGE_DOWN,
+        (false, true) => GHOSTTY_KEY_ARROW_UP,
+        (false, false) => GHOSTTY_KEY_ARROW_DOWN,
+    };
+    let mut out = Vec::new();
+    // A page per emitted gesture step, rather than a page per wheel line.
+    for _ in 0..if codex { 1 } else { lines } {
+        out.extend(vt.encode_key(key, 0, 0, None, None));
     }
     out
 }
@@ -3702,5 +3720,23 @@ mod tests {
         assert_eq!(pages_to_lines(-0.5, 24), -12);
         assert_eq!(pages_to_lines(-0.5, 25), -13, "half of an odd row count rounds away from zero");
         assert_eq!(pages_to_lines(0.02, 24), 0);
+    }
+}
+
+#[cfg(test)]
+mod codex_manual_scroll_tests {
+    use super::{alt_scroll_bytes, Vt};
+    #[test]
+    fn manual_codex_wheel_pages_transcript_instead_of_recalling_messages() {
+        let mut vt = Vt::new(80, 24);
+        assert_eq!(alt_scroll_bytes(&mut vt, true, true, 3), b"\x1b[5~");
+        assert_eq!(alt_scroll_bytes(&mut vt, true, false, 3), b"\x1b[6~");
+        assert!(alt_scroll_bytes(&mut vt, true, true, 0).is_empty());
+    }
+    #[test]
+    fn manual_codex_wheel_preserves_other_programs_arrow_fallback() {
+        let mut vt = Vt::new(80, 24);
+        assert_eq!(alt_scroll_bytes(&mut vt, false, true, 2), b"\x1b[A\x1b[A");
+        assert_eq!(alt_scroll_bytes(&mut vt, false, false, 2), b"\x1b[B\x1b[B");
     }
 }

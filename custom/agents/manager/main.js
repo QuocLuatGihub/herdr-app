@@ -1,6 +1,6 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { terminals, panes, spaces, props, hc, run, closeOverlay, theme } from "herdr";
+import { terminals, panes, spaces, props, hc, run, closeOverlay, theme, shared } from "herdr";
 
 export default class AgentManager extends View {
   init() { this.busy = null; this.error = null; this.note = null; }
@@ -38,11 +38,15 @@ export default class AgentManager extends View {
         const tab = space?.tabs?.find(tab => tab.id === pane?.tab);
         const name = item.labels?.where || (space ? space.name + " / " + (tab?.name || "") : item.title || item.name || "Terminal");
         const marked = item.labels?.["custom.agent"] === "codex";
+        const feed = shared("custom.agent-status"), row = feed?.rows?.[item.address];
+        const age = Date.now() - (row?.at ?? feed?.at ?? 0);
+        const state = age >= 0 && age <= 15000 && row?.source === "codex-app-server" ? row.status : null;
+        const detail = ({ idle: "Rảnh", working: "Đang làm", blocked: "Cần anh" })[state] || row?.reason || "Chưa có nguồn trạng thái";
         return h_flex().id("agent-manager-" + item.address).p(12).gap(12).items_center().rounded(8).bg(t.background)
           .child(v_flex().flex_1().min_w(0).gap(4)
             .child(div().text_size(13).font_medium().truncate().child(name))
             .child(div().text_size(11).text_color(t.dim).truncate().child(item.address + " · " + (item.cwd || "")))
-            .child(div().text_size(11).text_color(t.muted).child(marked ? "Đã gán Codex" : "Tự nhận: " + (item.program?.name || item.agent || "terminal"))))
+            .child(div().text_size(11).text_color(t.muted).child(marked ? "Codex · " + detail : "Tự nhận: " + (item.program?.name || item.agent || "terminal"))))
           .child(button("assign-codex-" + item.address, marked ? "Codex ✓" : "Gán Codex", !this.busy && !marked, cx => this.assign(item.address, "codex", cx), marked))
           .child(button("unassign-" + item.address, "Tự nhận", !this.busy && marked, cx => this.assign(item.address, "", cx)));
       })))

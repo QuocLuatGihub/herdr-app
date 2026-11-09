@@ -11,9 +11,22 @@ their space/tab names, and their addresses. **Gán Codex** assigns one terminal;
 
 You can also click **Gán Codex** in a terminal pane's header. The terminal then shows Codex in
 its pane header, tab icon, Agents sidebar and status bar count. **Bỏ gán** removes
-it. A marked terminal without a native report says **Chưa có tín hiệu** (unknown),
-never idle, working, done or blocked. Native reports take precedence automatically.
-Manual identity does not add native core status or automatic permission handling.
+it. For marked Linux SSH terminals in GNU Screen, a read-only observer queries the
+Codex daemon over its local Unix WebSocket every five seconds. It associates
+Screen session process metadata with a unique loaded root thread in that
+project, then displays the daemon’s idle/active/waiting state. Only thread metadata and runtime state are used; conversation content is not
+exported. No turn is started, and approvals are never answered.
+Native OSC reports take precedence automatically.
+
+Missing daemons, embedded `--no-daemon` sessions, unloaded threads and ambiguous
+projects remain **Chưa có tín hiệu**. Status expires after 15 seconds if no
+fresh result is received. There is no fallback that guesses state from screen text.
+Daemon-derived status is a Custom UI feature; it does not modify native core
+status or add automatic permission handling. The native wheel fallback for
+manually marked Codex sends transcript PageUp/PageDown instead of composer
+Up/Down when no mouse tracking is active in the alternate screen. Other apps
+and genuine mouse tracking keep their existing behavior. This binary input
+fix takes effect after reopening the Custom app; remote work remains in core.
 The mark stays with the terminal; remove it if that terminal no longer runs Codex.
 
 `install.py` generates personal adapters from this checkout's upstream UI mods.

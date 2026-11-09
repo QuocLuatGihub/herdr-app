@@ -2001,6 +2001,7 @@ impl AppWindow {
         view.update(cx, |v, _| {
             v.cwd = cwd;
             v.right_click_to_program = to_program;
+            v.codex_page_scroll = self.live.get(addr).and_then(|r| r.pointer("/labels/custom.agent")).and_then(Value::as_str) == Some("codex");
         });
     }
 
