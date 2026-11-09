@@ -1056,3 +1056,6 @@ reviewed sends, and user-triggered read-aloud. Send can end recording and wait
 for final recognition before delivery; a separate Stop click is optional.
 This mod adds no core commands. Cmd+Shift+V starts/stops recording only when
 the mod is present; microphone capture never starts automatically.
+
+In the Custom voice layout, Cmd+Option+V or the bottom-right Voice button
+toggles the panel; its header also offers Hide.

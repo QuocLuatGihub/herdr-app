@@ -7,6 +7,9 @@ Install: `bash scripts/setup-voice-macos`. It is also called by
 `scripts/install-macos-custom`. Activate with
 `herdr-custom do layout.switch '{"name":"voice-custom"}'`.
 
+Toggle the Voice sidebar with Cmd+Option+V or the persistent button at the
+bottom right. The panel header also has a Hide button.
+
 Select a live terminal in the Voice panel, choose Vietnamese/English/automatic,
 click Enable microphone (or Cmd+Shift+V). Text appears in batches while you speak.
 Recording ends after about two seconds of silence after speech (or ten seconds

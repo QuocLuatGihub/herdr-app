@@ -1,6 +1,6 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, EditorState, Editor } from "gpui-base";
-import { terminals, theme, home, exec, hc, nextCommand } from "herdr";
+import { terminals, theme, home, exec, hc, nextCommand, run } from "herdr";
 
 export function liveTarget(all, address) {
   return all.find(t => t.address === address && t.state === "live");
@@ -172,7 +172,8 @@ export default class Voice extends View {
       .text_size(12).opacity(enabled ? 1 : 0.4).when(enabled, el => el.cursor_pointer().on_click((_e, cx) => action(cx))).child(text);
     return v_flex().id("voice-panel").size_full().min_h(0).p(14).gap(10).bg(t.surface).text_color(t.foreground)
       .child(h_flex().items_center().gap(8).child(div().flex_1().font_semibold().child("Voice · trên Mac"))
-        .child(label("⌘⇧V bật mic")))
+        .child(label("⌘⇧V bật mic"))
+        .child(button("voice-hide", "Ẩn ›", true, () => run("layout.hide", { id: "voice-panel" }))))
       .child(label("GỬI TỚI TERMINAL"))
       .child(v_flex().max_h(110).overflow_y_scrollbar().gap(4).children(all.map(item =>
         div().id("voice-target-" + item.address).px(8).py(6).rounded(6)
