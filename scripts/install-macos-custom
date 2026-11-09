@@ -29,7 +29,8 @@ info = dict(CFBundleExecutable='HerdrCustom', CFBundleIdentifier='vn.quocluat.he
     CFBundleName='Herdr Custom', CFBundleDisplayName='Herdr Custom',
     CFBundleIconFile='Herdr', CFBundlePackageType='APPL',
     CFBundleShortVersionString=re.search(r'^version = "([^"]+)"', (root / 'Cargo.toml').read_text(), re.M)[1], CFBundleVersion='1',
-    NSPrincipalClass='NSApplication', NSHighResolutionCapable=True)
+    NSPrincipalClass='NSApplication', NSHighResolutionCapable=True,
+    NSMicrophoneUsageDescription='Record your voice locally to draft terminal messages.')
 with (app / 'Contents/Info.plist').open('wb') as f:
     plistlib.dump(info, f)
 cli = home / '.local/bin/herdr-custom'
@@ -44,3 +45,6 @@ print(app)
 PY
 codesign --force --sign - "$HOME/Applications/Herdr Custom.app"
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$HOME/Applications/Herdr Custom.app"
+
+# Personal mod; source builds keep upstream UI files unchanged.
+bash scripts/setup-voice-macos

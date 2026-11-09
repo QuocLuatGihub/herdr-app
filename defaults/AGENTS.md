@@ -1045,3 +1045,12 @@ including a small herdr-core skill you can install with the user's permission.
 - One mod per idea. Don't edit `AGENTS.md` or the `.d.ts` files (the app
   rewrites them). Don't touch other mods unless the request
   needs it.
+
+## Herdr Custom voice (this fork)
+
+`bash scripts/install-macos-custom` installs the personal `voice` mod and
+`voice-custom` layout in the separate `~/.config/herdr-app-custom` home.
+`custom/voice/README.md` describes local Whisper dictation, microphone permission,
+explicit terminal targeting, reviewed sends, and user-triggered read-aloud.
+This mod adds no core commands. Cmd+Shift+V starts/stops recording only when
+the mod is present; microphone capture never starts automatically.
