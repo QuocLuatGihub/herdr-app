@@ -1,0 +1,46 @@
+#!/bin/bash
+# Install an isolated fork without replacing Herdr.app or its CLI.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+[[ $(uname -s) == Darwin ]] || exit 1
+cargo build --release --locked
+python3 - <<'PY'
+import os, pathlib, plistlib, shutil, re, shlex
+root = pathlib.Path.cwd()
+home = pathlib.Path.home()
+app = home / 'Applications/Herdr Custom.app'
+mac = app / 'Contents/MacOS'
+resources = app / 'Contents/Resources'
+mac.mkdir(parents=True, exist_ok=True)
+resources.mkdir(parents=True, exist_ok=True)
+shutil.copy2(root / 'target/release/herdr-app', mac / 'herdr-custom-bin.new')
+os.replace(mac / 'herdr-custom-bin.new', mac / 'herdr-custom-bin')
+launcher = mac / 'HerdrCustom'
+launcher.write_text('''#!/bin/bash
+export HERDR_APP_HOME="$HOME/.config/herdr-app-custom"
+export HC_SESSION="herdr-custom"
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+unset HERDR_RELEASES_URL
+exec "$(dirname "$0")/herdr-custom-bin" "$@"
+''')
+launcher.chmod(0o755)
+shutil.copy2(root / 'assets/icons/Herdr.icns', resources / 'Herdr.icns')
+info = dict(CFBundleExecutable='HerdrCustom', CFBundleIdentifier='vn.quocluat.herdr.custom',
+    CFBundleName='Herdr Custom', CFBundleDisplayName='Herdr Custom',
+    CFBundleIconFile='Herdr', CFBundlePackageType='APPL',
+    CFBundleShortVersionString=re.search(r'^version = "([^"]+)"', (root / 'Cargo.toml').read_text(), re.M)[1], CFBundleVersion='1',
+    NSPrincipalClass='NSApplication', NSHighResolutionCapable=True)
+with (app / 'Contents/Info.plist').open('wb') as f:
+    plistlib.dump(info, f)
+cli = home / '.local/bin/herdr-custom'
+cli.parent.mkdir(parents=True, exist_ok=True)
+if cli.is_symlink():
+    cli.unlink()
+if cli.exists() and '# Herdr Custom launcher' not in cli.read_text():
+    raise SystemExit(f'Refusing to replace {cli}')
+cli.write_text('#!/bin/bash\n# Herdr Custom launcher\nexec ' + shlex.quote(str(launcher)) + ' "$@"\n')
+cli.chmod(0o755)
+print(app)
+PY
+codesign --force --sign - "$HOME/Applications/Herdr Custom.app"
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$HOME/Applications/Herdr Custom.app"
