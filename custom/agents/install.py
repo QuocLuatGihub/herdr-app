@@ -60,6 +60,8 @@ def install(app_home):
         (destination / 'main.js').write_text(generate(source))
         shutil.copy2(ROOT / 'defaults/mods' / source / 'mod.json', destination / 'mod.json')
         shutil.copy2(ROOT / 'custom/agents/identity.js', destination / 'identity.js')
+    shutil.copytree(ROOT / 'custom/agents/manager', app_home / 'mods/agent-manager', dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns('gpui-kit.d.ts', 'jsconfig.json', '.gitignore'))
     path = app_home / 'layouts/voice-custom.json'
     layout = json.loads(path.read_text())
     mapping = {s: 'custom-' + s for s in ('agents', 'pane', 'tabs', 'workspace-status')}
@@ -73,6 +75,17 @@ def install(app_home):
             for child in value:
                 visit(child)
     visit(layout)
+    def add_button(value):
+        if isinstance(value, dict):
+            if value.get('id') == 'status-row' and not any(c.get('id') == 'agent-manager-button' for c in value['children']):
+                value['children'].insert(-1, dict(id='agent-manager-button', type='block', size={'px': 120},
+                    content={'mod': 'agent-manager', 'props': {'button': True}}))
+            for child in value.values():
+                add_button(child)
+        elif isinstance(value, list):
+            for child in value:
+                add_button(child)
+    add_button(layout)
     path.write_text(json.dumps(layout, indent=2) + '\n')
 
 

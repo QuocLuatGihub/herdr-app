@@ -1067,3 +1067,6 @@ terminals. The `custom.agent=codex` terminal label changes only Custom UI identi
 Its Agents row is **Chưa có tín hiệu** until a real status report arrives; native
 reports win. See `custom/agents/README.md`. It does not change core status or
 bypass approvals, and it does not classify every Screen terminal as Codex.
+
+The bottom-right **Gán agent…** button opens the `agent-manager` dialog to
+assign Codex or return each local/remote terminal to automatic identity.
