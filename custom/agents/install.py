@@ -44,8 +44,12 @@ def generate(source):
   render(cx) {''')
         needle = '.when(st === "working",'
         text = text.replace(needle, '''.when(p.manualAgent && !p.status, el => el.child(div().text_size(10).text_color(t.dim).child("Chưa có tín hiệu")))
-      .when(p.manualAgent && terminals().find(t => t.address === p.terminal)?.labels?.["custom.scroll.version"] === "2",
-        el => el.child(div().text_size(10).text_color(t.dim).child("Cuộn Screen · Esc để gõ")))
+      .when(terminals().some(t => t.address === p.terminal && t.labels?.["custom.agent"] === "codex" && t.labels?.["custom.scroll.exit"] === "1"),
+        el => el.child(div().id("screen-live-" + pane).px(7).py(2).rounded(4).text_size(10)
+          .text_color(t.foreground).cursor_pointer().hover(s => s.bg(t.hover))
+          .tooltip("Về màn hình trực tiếp; không gửi Escape vào Codex")
+          .on_click((_e, cx) => { cx.stop_propagation(); run("terminal.scroll", { terminal: p.terminal, to: "bottom" }); })
+          .child("Về trực tiếp")))
       .when(!p.app || p.manualAgent, el => el.child(div().id("mark-codex-" + pane).px(5).py(2).rounded(4)
         .text_size(10).text_color(t.dim).cursor_pointer().hover(s => s.bg(t.hover).text_color(t.foreground))
         .tooltip(this.markError || (p.manualAgent ? "Bỏ gán Codex cho terminal này" : "Gán terminal này là Codex (Screen/tmux)"))

@@ -1076,6 +1076,8 @@ bar mod reads the daemon's runtime status over its local Unix socket. Unique
 loaded thread matches show idle/working/blocked; unavailable or ambiguous
 threads remain unknown, and stale status expires after 15 seconds. Native OSC
 reports win. Verified remote GNU Screen attachments use private wheel bindings to scroll
-Screen history (including inline Codex); Esc returns to live input. The setup
+Screen history (including inline Codex). Scrolling back down to the bottom or
+clicking **Về trực tiếp** returns to live output using a private Screen key;
+it never sends a bare Escape that could interrupt Codex. The setup
 is bound to the attachment PID and protocol version. Local terminals and
 unconfigured attachments do not receive these private keys.

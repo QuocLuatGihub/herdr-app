@@ -2001,7 +2001,11 @@ impl AppWindow {
         view.update(cx, |v, _| {
             v.cwd = cwd;
             v.right_click_to_program = to_program;
-            v.screen_history_scroll = screen_history_enabled(addr, self.live.get(addr));
+            let attachment = self.live.get(addr).and_then(|r| r.pointer("/foreground/pid")).and_then(Value::as_u64)
+                .filter(|_| screen_history_enabled(addr, self.live.get(addr)));
+            let limit = self.live.get(addr).and_then(|r| r.pointer("/labels/custom.scroll.limit")).and_then(Value::as_str)
+                .and_then(|n| n.parse().ok()).unwrap_or(10000);
+            v.configure_screen_history(attachment, limit);
         });
     }
 
@@ -4785,6 +4789,7 @@ fn screen_history_enabled(addr: &str, record: Option<&Value>) -> bool {
     r.pointer("/labels/custom.agent").and_then(Value::as_str) == Some("codex")
         && r.pointer("/labels/custom.scroll").and_then(Value::as_str) == Some("screen")
         && r.pointer("/labels/custom.scroll.version").and_then(Value::as_str) == Some("2")
+        && r.pointer("/labels/custom.scroll.exit").and_then(Value::as_str) == Some("1")
         && r.pointer("/foreground/name").and_then(Value::as_str) == Some("screen")
         && r.pointer("/labels/custom.scroll.pid").and_then(Value::as_str).and_then(|p| p.parse::<u64>().ok()) == Some(pid)
 }
@@ -5945,7 +5950,7 @@ mod screen_history_scope_tests {
     #[test]
     fn remote_screen_wheel_scope_requires_a_verified_live_attachment() {
         let mut record = json!({"foreground":{"name":"screen","pid":42},"labels":{
-            "custom.agent":"codex","custom.scroll":"screen","custom.scroll.pid":"42","custom.scroll.version":"2"}});
+            "custom.agent":"codex","custom.scroll":"screen","custom.scroll.pid":"42","custom.scroll.version":"2","custom.scroll.exit":"1"}});
         assert!(screen_history_enabled("remote/t1", Some(&record)));
         assert!(!screen_history_enabled("t1", Some(&record)), "local terminals are untouched");
         record["foreground"]["pid"] = json!(43);

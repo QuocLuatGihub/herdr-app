@@ -110,7 +110,10 @@ pub struct TerminalView {
     /// Right-clicks go to the program when it takes the mouse (Shift: the menu).
     pub right_click_to_program: bool,
     /// A verified remote Screen attachment has private history wheel bindings installed.
-    pub screen_history_scroll: bool,
+    screen_history_scroll: bool,
+    screen_history_limit: usize,
+    screen_history_attachment: Option<u64>,
+    screen_history_offset: usize,
     grid: Rc<RefCell<Grid>>,
     focus: FocusHandle,
     was_focused: bool,
@@ -249,6 +252,9 @@ impl TerminalView {
             link: None,
             right_click_to_program: false,
             screen_history_scroll: false,
+            screen_history_limit: 10000,
+            screen_history_attachment: None,
+            screen_history_offset: 0,
             grid: Rc::new(RefCell::new(Grid {
                 vt: Vt::new(size_hint.0.max(2), size_hint.1.max(1)),
                 core: core.clone(),
@@ -799,6 +805,7 @@ impl TerminalView {
             return;
         }
         let k = &ev.keystroke;
+        if self.screen_history_scroll && k.key == "escape" { self.screen_history_offset = 0; }
         // Typing clears a selection, as in Herdr.
         if !k.key.starts_with("shift") && !k.key.starts_with("control") && !k.key.starts_with("alt") {
             self.grid.borrow_mut().vt.clear_selection();
@@ -820,7 +827,7 @@ impl TerminalView {
         }
         let up = steps.y > 0;
         if self.screen_history_scroll {
-            let out = alt_scroll_bytes(&mut g.vt, true, up, n);
+            let out = screen_history_bytes(&mut self.screen_history_offset, self.screen_history_limit, up, n);
             if let Some(ch) = g.channel { g.core.input(ch, &out); }
         } else if g.vt.mouse_tracking() {
             let ((x, y), size) = mouse_at(&g, ev.position);
@@ -831,7 +838,7 @@ impl TerminalView {
         } else if n == 0 {
             return;
         } else if g.vt.alt_screen() {
-            let out = alt_scroll_bytes(&mut g.vt, false, up, n);
+            let out = alt_scroll_bytes(&mut g.vt, up, n);
             if let Some(ch) = g.channel {
                 g.core.input(ch, &out);
             }
@@ -841,9 +848,24 @@ impl TerminalView {
         cx.notify();
     }
 
+    pub fn configure_screen_history(&mut self, attachment: Option<u64>, limit: usize) {
+        if self.screen_history_attachment != attachment { self.screen_history_offset = 0; }
+        self.screen_history_attachment = attachment;
+        self.screen_history_scroll = attachment.is_some();
+        self.screen_history_limit = limit;
+    }
+
     pub fn scroll_history(&mut self, target: ScrollTarget, cx: &mut Context<Self>) {
         let mut g = self.grid.borrow_mut();
         let rows = g.vt.rows;
+        if self.screen_history_scroll && matches!(target, ScrollTarget::Bottom) {
+            self.screen_history_offset = 0;
+            // Screen consumes this private key in copy mode; live mode ignores it.
+            // Never send a bare Escape that could interrupt a running Codex task.
+            if let Some(ch) = g.channel { g.core.input(ch, b"\x1b[999;3~"); }
+            cx.notify();
+            return;
+        }
 
         match target {
             ScrollTarget::Lines(lines) => g.vt.scroll_viewport(lines),
@@ -1169,12 +1191,27 @@ fn scroll_mouse_bytes(vt: &mut Vt, steps: Point<i32>, x: f32, y: f32, size: (u32
 /// GNU Screen intercepts these private wheel keys before the child program.
 /// The first upward key enters copy mode; following keys move through Screen
 /// history. This works even when Codex uses an inline, primary-screen UI.
-fn alt_scroll_bytes(vt: &mut Vt, screen_history: bool, up: bool, lines: usize) -> Vec<u8> {
+fn screen_history_bytes(offset: &mut usize, limit: usize, up: bool, lines: usize) -> Vec<u8> {
     if lines == 0 { return Vec::new(); }
-    if screen_history {
-        let key: &[u8] = if up { b"\x1b[999;1~" } else { b"\x1b[999;2~" };
-        return key.repeat(if up { lines.max(2) } else { lines });
+    const UP: &[u8] = b"\x1b[999;1~";
+    const DOWN: &[u8] = b"\x1b[999;2~";
+    const LIVE: &[u8] = b"\x1b[999;3~";
+    if up {
+        let moved = lines.min(limit.saturating_sub(*offset));
+        if moved == 0 { return Vec::new(); }
+        let enter = usize::from(*offset == 0);
+        *offset += moved;
+        UP.repeat(moved + enter)
+    } else {
+        let moved = lines.min(*offset);
+        *offset -= moved;
+        let mut out = DOWN.repeat(moved);
+        if *offset == 0 { out.extend_from_slice(LIVE); }
+        out
     }
+}
+
+fn alt_scroll_bytes(vt: &mut Vt, up: bool, lines: usize) -> Vec<u8> {
     let key = if up { GHOSTTY_KEY_ARROW_UP } else { GHOSTTY_KEY_ARROW_DOWN };
     let mut out = Vec::new();
     for _ in 0..lines { out.extend(vt.encode_key(key, 0, 0, None, None)); }
@@ -3724,20 +3761,30 @@ mod tests {
 
 #[cfg(test)]
 mod codex_manual_scroll_tests {
-    use super::{alt_scroll_bytes, Vt};
+    use super::{alt_scroll_bytes, screen_history_bytes, Vt};
     #[test]
-    fn manual_codex_wheel_enters_screen_history_without_composer_keys() {
-        let mut vt = Vt::new(80, 24);
-        assert_eq!(alt_scroll_bytes(&mut vt, true, true, 3), b"\x1b[999;1~".repeat(3));
-        assert!(!vt.alt_screen(), "inline Codex must be supported too");
-        assert_eq!(alt_scroll_bytes(&mut vt, true, true, 1), b"\x1b[999;1~".repeat(2));
-        assert_eq!(alt_scroll_bytes(&mut vt, true, false, 3), b"\x1b[999;2~".repeat(3));
-        assert!(alt_scroll_bytes(&mut vt, true, true, 0).is_empty());
+    fn manual_codex_wheel_returns_to_live_at_bottom() {
+        let mut offset = 0;
+        assert_eq!(screen_history_bytes(&mut offset, 100, true, 3), b"\x1b[999;1~".repeat(4));
+        assert_eq!(offset, 3);
+        assert_eq!(screen_history_bytes(&mut offset, 100, false, 2), b"\x1b[999;2~".repeat(2));
+        assert_eq!(offset, 1);
+        assert_eq!(screen_history_bytes(&mut offset, 100, false, 9), b"\x1b[999;2~\x1b[999;3~");
+        assert_eq!(offset, 0);
+        assert_eq!(screen_history_bytes(&mut offset, 100, false, 1), b"\x1b[999;3~");
+    }
+    #[test]
+    fn manual_codex_wheel_clamps_to_screen_history_capacity() {
+        let mut offset = 0;
+        assert_eq!(screen_history_bytes(&mut offset, 2, true, 20), b"\x1b[999;1~".repeat(3));
+        assert_eq!(offset, 2);
+        assert!(screen_history_bytes(&mut offset, 2, true, 1).is_empty());
+        assert_eq!(screen_history_bytes(&mut offset, 2, false, 2), b"\x1b[999;2~\x1b[999;2~\x1b[999;3~");
     }
     #[test]
     fn manual_codex_wheel_preserves_other_programs_arrow_fallback() {
         let mut vt = Vt::new(80, 24);
-        assert_eq!(alt_scroll_bytes(&mut vt, false, true, 2), b"\x1b[A\x1b[A");
-        assert_eq!(alt_scroll_bytes(&mut vt, false, false, 2), b"\x1b[B\x1b[B");
+        assert_eq!(alt_scroll_bytes(&mut vt, true, 2), b"\x1b[A\x1b[A");
+        assert_eq!(alt_scroll_bytes(&mut vt, false, 2), b"\x1b[B\x1b[B");
     }
 }

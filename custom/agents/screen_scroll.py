@@ -8,6 +8,7 @@ import sys
 
 UP = '\x1b[999;1~'
 DOWN = '\x1b[999;2~'
+LIVE = '\x1b[999;3~'
 
 
 def configure(spec):
@@ -40,12 +41,16 @@ def configure(spec):
         ['bindkey', DOWN, 'stuff', ''],
         ['bindkey', '-m', UP, 'stuff', '\x19'],
         ['bindkey', '-m', DOWN, 'stuff', '\x05'],
+        ['bindkey', LIVE, 'stuff', ''],
+        ['bindkey', '-m', LIVE, 'stuff', '\x1b'],
     ]
     for command in commands:
         result = subprocess.run(['screen', '-S', target, '-X', *command], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=4)
         if result.returncode or 'No screen session' in result.stdout + result.stderr:
             raise ValueError(result.stderr or result.stdout or 'Screen wheel setup failed')
-    return {'configured': True, 'pid': pid}
+    info = subprocess.run(['screen', '-S', target, '-Q', 'info'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, timeout=4)
+    capacity = re.search(r'\+(\d+)', info.stdout)
+    return {'configured': True, 'pid': pid, 'history': int(capacity.group(1)) if capacity else 10000}
 
 if __name__ == '__main__':
     try:

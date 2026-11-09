@@ -18,11 +18,11 @@ export function observe(cx) {
           const r = await hc(["get", terminal.address]);
           if (r.code) continue;
           const details = JSON.parse(r.stdout);
-          if (details.foreground?.name === "screen" && (String(details.foreground.pid) !== details.labels?.["custom.scroll.pid"] || details.labels?.["custom.scroll.version"] !== "2")) {
+          if (details.foreground?.name === "screen" && (String(details.foreground.pid) !== details.labels?.["custom.scroll.pid"] || details.labels?.["custom.scroll.version"] !== "2" || details.labels?.["custom.scroll.exit"] !== "1")) {
             try {
               const setup = await exec("python3", ["-c", scrollCode, JSON.stringify(details)], { on: machine, timeout: 20000 });
               const result = setup.code ? null : JSON.parse(setup.stdout);
-              if (result?.configured) await hc(["label", terminal.address, "custom.scroll=screen", "custom.scroll.pid=" + result.pid, "custom.scroll.version=2"]);
+              if (result?.configured) await hc(["label", terminal.address, "custom.scroll=screen", "custom.scroll.pid=" + result.pid, "custom.scroll.version=2", "custom.scroll.exit=1", "custom.scroll.limit=" + result.history]);
             } catch {} // Never enable private wheel input before setup succeeds.
           }
           const list = groups.get(machine) || [];
