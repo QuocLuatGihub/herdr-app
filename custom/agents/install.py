@@ -44,6 +44,8 @@ def generate(source):
   render(cx) {''')
         needle = '.when(st === "working",'
         text = text.replace(needle, '''.when(p.manualAgent && !p.status, el => el.child(div().text_size(10).text_color(t.dim).child("Chưa có tín hiệu")))
+      .when(p.manualAgent && terminals().find(t => t.address === p.terminal)?.labels?.["custom.scroll.version"] === "2",
+        el => el.child(div().text_size(10).text_color(t.dim).child("Cuộn Screen · Esc để gõ")))
       .when(!p.app || p.manualAgent, el => el.child(div().id("mark-codex-" + pane).px(5).py(2).rounded(4)
         .text_size(10).text_color(t.dim).cursor_pointer().hover(s => s.bg(t.hover).text_color(t.foreground))
         .tooltip(this.markError || (p.manualAgent ? "Bỏ gán Codex cho terminal này" : "Gán terminal này là Codex (Screen/tmux)"))
@@ -64,7 +66,7 @@ def install(app_home):
         (destination / 'main.js').write_text(generate(source))
         shutil.copy2(ROOT / 'defaults/mods' / source / 'mod.json', destination / 'mod.json')
         shutil.copy2(ROOT / 'custom/agents/identity.js', destination / 'identity.js')
-    for name in ('observer.js', 'status.py'):
+    for name in ('observer.js', 'status.py', 'screen_scroll.py'):
         shutil.copy2(ROOT / 'custom/agents' / name, app_home / 'mods/custom-workspace-status' / name)
     shutil.copytree(ROOT / 'custom/agents/manager', app_home / 'mods/agent-manager', dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns('gpui-kit.d.ts', 'jsconfig.json', '.gitignore'))

@@ -1,13 +1,15 @@
 import { terminals, hc, exec, appHome, readTextFile, setShared } from "herdr";
 
+// Private Screen wheel setup is scoped to marked remote attachment PIDs.
 export function observe(cx) {
-  let busy = false, code = null;
+  let busy = false, code = null, scrollCode = null;
   const poll = cx => {
     if (busy) return;
     busy = true;
     cx.spawn(async cx => {
       try {
         if (!code) code = await readTextFile(appHome() + "/mods/custom-workspace-status/status.py");
+        if (!scrollCode) scrollCode = await readTextFile(appHome() + "/mods/custom-workspace-status/screen_scroll.py");
         const marked = terminals().filter(t => t.state === "live" && t.labels?.["custom.agent"] === "codex");
         const groups = new Map();
         for (const terminal of marked) {
@@ -16,6 +18,13 @@ export function observe(cx) {
           const r = await hc(["get", terminal.address]);
           if (r.code) continue;
           const details = JSON.parse(r.stdout);
+          if (details.foreground?.name === "screen" && (String(details.foreground.pid) !== details.labels?.["custom.scroll.pid"] || details.labels?.["custom.scroll.version"] !== "2")) {
+            try {
+              const setup = await exec("python3", ["-c", scrollCode, JSON.stringify(details)], { on: machine, timeout: 20000 });
+              const result = setup.code ? null : JSON.parse(setup.stdout);
+              if (result?.configured) await hc(["label", terminal.address, "custom.scroll=screen", "custom.scroll.pid=" + result.pid, "custom.scroll.version=2"]);
+            } catch {} // Never enable private wheel input before setup succeeds.
+          }
           const list = groups.get(machine) || [];
           list.push(details); groups.set(machine, list);
         }

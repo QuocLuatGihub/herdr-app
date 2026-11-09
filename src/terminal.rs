@@ -109,8 +109,8 @@ pub struct TerminalView {
     link: Option<LinkTarget>,
     /// Right-clicks go to the program when it takes the mouse (Shift: the menu).
     pub right_click_to_program: bool,
-    /// Manually identified Codex inside a multiplexer uses transcript paging, not composer history.
-    pub codex_page_scroll: bool,
+    /// A verified remote Screen attachment has private history wheel bindings installed.
+    pub screen_history_scroll: bool,
     grid: Rc<RefCell<Grid>>,
     focus: FocusHandle,
     was_focused: bool,
@@ -248,7 +248,7 @@ impl TerminalView {
             cwd: None,
             link: None,
             right_click_to_program: false,
-            codex_page_scroll: false,
+            screen_history_scroll: false,
             grid: Rc::new(RefCell::new(Grid {
                 vt: Vt::new(size_hint.0.max(2), size_hint.1.max(1)),
                 core: core.clone(),
@@ -819,7 +819,10 @@ impl TerminalView {
             return;
         }
         let up = steps.y > 0;
-        if g.vt.mouse_tracking() {
+        if self.screen_history_scroll {
+            let out = alt_scroll_bytes(&mut g.vt, true, up, n);
+            if let Some(ch) = g.channel { g.core.input(ch, &out); }
+        } else if g.vt.mouse_tracking() {
             let ((x, y), size) = mouse_at(&g, ev.position);
             let out = scroll_mouse_bytes(&mut g.vt, steps, x, y, size);
             if let Some(ch) = g.channel {
@@ -828,7 +831,7 @@ impl TerminalView {
         } else if n == 0 {
             return;
         } else if g.vt.alt_screen() {
-            let out = alt_scroll_bytes(&mut g.vt, self.codex_page_scroll, up, n);
+            let out = alt_scroll_bytes(&mut g.vt, false, up, n);
             if let Some(ch) = g.channel {
                 g.core.input(ch, &out);
             }
@@ -1163,22 +1166,18 @@ fn scroll_mouse_bytes(vt: &mut Vt, steps: Point<i32>, x: f32, y: f32, size: (u32
     out
 }
 
-/// A wheel gesture in Screen/tmux must not recall Codex composer messages.
-/// PageUp/PageDown are Codex transcript navigation keys. Other full-screen
-/// programs retain the existing arrow fallback; mouse-reporting apps bypass this.
-fn alt_scroll_bytes(vt: &mut Vt, codex: bool, up: bool, lines: usize) -> Vec<u8> {
+/// GNU Screen intercepts these private wheel keys before the child program.
+/// The first upward key enters copy mode; following keys move through Screen
+/// history. This works even when Codex uses an inline, primary-screen UI.
+fn alt_scroll_bytes(vt: &mut Vt, screen_history: bool, up: bool, lines: usize) -> Vec<u8> {
     if lines == 0 { return Vec::new(); }
-    let key = match (codex, up) {
-        (true, true) => GHOSTTY_KEY_PAGE_UP,
-        (true, false) => GHOSTTY_KEY_PAGE_DOWN,
-        (false, true) => GHOSTTY_KEY_ARROW_UP,
-        (false, false) => GHOSTTY_KEY_ARROW_DOWN,
-    };
-    let mut out = Vec::new();
-    // A page per emitted gesture step, rather than a page per wheel line.
-    for _ in 0..if codex { 1 } else { lines } {
-        out.extend(vt.encode_key(key, 0, 0, None, None));
+    if screen_history {
+        let key: &[u8] = if up { b"\x1b[999;1~" } else { b"\x1b[999;2~" };
+        return key.repeat(if up { lines.max(2) } else { lines });
     }
+    let key = if up { GHOSTTY_KEY_ARROW_UP } else { GHOSTTY_KEY_ARROW_DOWN };
+    let mut out = Vec::new();
+    for _ in 0..lines { out.extend(vt.encode_key(key, 0, 0, None, None)); }
     out
 }
 
@@ -3727,10 +3726,12 @@ mod tests {
 mod codex_manual_scroll_tests {
     use super::{alt_scroll_bytes, Vt};
     #[test]
-    fn manual_codex_wheel_pages_transcript_instead_of_recalling_messages() {
+    fn manual_codex_wheel_enters_screen_history_without_composer_keys() {
         let mut vt = Vt::new(80, 24);
-        assert_eq!(alt_scroll_bytes(&mut vt, true, true, 3), b"\x1b[5~");
-        assert_eq!(alt_scroll_bytes(&mut vt, true, false, 3), b"\x1b[6~");
+        assert_eq!(alt_scroll_bytes(&mut vt, true, true, 3), b"\x1b[999;1~".repeat(3));
+        assert!(!vt.alt_screen(), "inline Codex must be supported too");
+        assert_eq!(alt_scroll_bytes(&mut vt, true, true, 1), b"\x1b[999;1~".repeat(2));
+        assert_eq!(alt_scroll_bytes(&mut vt, true, false, 3), b"\x1b[999;2~".repeat(3));
         assert!(alt_scroll_bytes(&mut vt, true, true, 0).is_empty());
     }
     #[test]

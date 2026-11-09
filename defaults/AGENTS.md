@@ -1075,5 +1075,7 @@ For marked Codex sessions in GNU Screen on Linux SSH machines, the Custom status
 bar mod reads the daemon's runtime status over its local Unix socket. Unique
 loaded thread matches show idle/working/blocked; unavailable or ambiguous
 threads remain unknown, and stale status expires after 15 seconds. Native OSC
-reports win. Marked Codex panes use PageUp/PageDown rather than composer arrows
-for alternate-screen wheel fallback when the program does not track the mouse.
+reports win. Verified remote GNU Screen attachments use private wheel bindings to scroll
+Screen history (including inline Codex); Esc returns to live input. The setup
+is bound to the attachment PID and protocol version. Local terminals and
+unconfigured attachments do not receive these private keys.

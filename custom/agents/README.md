@@ -22,11 +22,14 @@ Missing daemons, embedded `--no-daemon` sessions, unloaded threads and ambiguous
 projects remain **Chưa có tín hiệu**. Status expires after 15 seconds if no
 fresh result is received. There is no fallback that guesses state from screen text.
 Daemon-derived status is a Custom UI feature; it does not modify native core
-status or add automatic permission handling. The native wheel fallback for
-manually marked Codex sends transcript PageUp/PageDown instead of composer
-Up/Down when no mouse tracking is active in the alternate screen. Other apps
-and genuine mouse tracking keep their existing behavior. This binary input
-fix takes effect after reopening the Custom app; remote work remains in core.
+status or add automatic permission handling. For verified GNU Screen attachments on Linux SSH machines, wheel input uses
+private Screen bindings to scroll its own history, including Codex inline mode.
+Scroll up enters Screen copy mode; **Esc** returns to live Codex input. The
+child program receives no wheel keystrokes. Bindings use private sequences,
+not the user's PageUp/PageDown keys, and live only in that Screen server.
+Setup is tied to the attachment PID; a new attachment is configured before
+private wheel input is enabled. Local terminals are unchanged. Reopen Herdr
+Custom after installing the native input fix; remote work stays in core.
 The mark stays with the terminal; remove it if that terminal no longer runs Codex.
 
 `install.py` generates personal adapters from this checkout's upstream UI mods.

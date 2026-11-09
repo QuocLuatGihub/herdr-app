@@ -2001,7 +2001,7 @@ impl AppWindow {
         view.update(cx, |v, _| {
             v.cwd = cwd;
             v.right_click_to_program = to_program;
-            v.codex_page_scroll = self.live.get(addr).and_then(|r| r.pointer("/labels/custom.agent")).and_then(Value::as_str) == Some("codex");
+            v.screen_history_scroll = screen_history_enabled(addr, self.live.get(addr));
         });
     }
 
@@ -4776,6 +4776,19 @@ fn sized(slot: Div, n: &Node, axis: Axis, total_weight: f32) -> Div {
     slot
 }
 
+/// Private Screen wheel keys are safe only on the exact remote attachment
+/// whose bindings were installed, never on a local terminal or a recovery shell.
+fn screen_history_enabled(addr: &str, record: Option<&Value>) -> bool {
+    if !addr.contains('/') { return false; }
+    let Some(r) = record else { return false };
+    let Some(pid) = r.pointer("/foreground/pid").and_then(Value::as_u64).filter(|p| *p > 0) else { return false };
+    r.pointer("/labels/custom.agent").and_then(Value::as_str) == Some("codex")
+        && r.pointer("/labels/custom.scroll").and_then(Value::as_str) == Some("screen")
+        && r.pointer("/labels/custom.scroll.version").and_then(Value::as_str) == Some("2")
+        && r.pointer("/foreground/name").and_then(Value::as_str) == Some("screen")
+        && r.pointer("/labels/custom.scroll.pid").and_then(Value::as_str).and_then(|p| p.parse::<u64>().ok()) == Some(pid)
+}
+
 /// What a terminal runs now (core's `foreground`), else what it started with.
 fn running_argv(rec: &serde_json::Map<String, Value>) -> Option<&Value> {
     rec.get("foreground").and_then(|f| f.get("argv")).filter(|a| a.as_array().is_some_and(|a| !a.is_empty())).or_else(|| rec.get("argv"))
@@ -5923,4 +5936,23 @@ export default class SystemToast extends View {
         assert!(!super::adoptable(&record("live"), "sp1", Some("tb2"), None));
     }
 
+}
+
+#[cfg(test)]
+mod screen_history_scope_tests {
+    use super::screen_history_enabled;
+    use serde_json::json;
+    #[test]
+    fn remote_screen_wheel_scope_requires_a_verified_live_attachment() {
+        let mut record = json!({"foreground":{"name":"screen","pid":42},"labels":{
+            "custom.agent":"codex","custom.scroll":"screen","custom.scroll.pid":"42","custom.scroll.version":"2"}});
+        assert!(screen_history_enabled("remote/t1", Some(&record)));
+        assert!(!screen_history_enabled("t1", Some(&record)), "local terminals are untouched");
+        record["foreground"]["pid"] = json!(43);
+        assert!(!screen_history_enabled("remote/t1", Some(&record)), "a new attachment needs its own setup");
+        record["foreground"]["pid"] = json!(42);
+        record["foreground"]["name"] = json!("bash");
+        assert!(!screen_history_enabled("remote/t1", Some(&record)), "never send private keys to a recovery shell");
+        assert!(!screen_history_enabled("remote/t1", None));
+    }
 }
