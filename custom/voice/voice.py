@@ -48,6 +48,61 @@ def transcribe(path, language):
     return text
 
 
+def merge_chunks(chunks, output):
+    """Read only finalized segments; the current microphone file is never read."""
+    with wave.open(str(output), 'wb') as target:
+        target.setparams((1, 2, 16000, 0, 'NONE', 'not compressed'))
+        for chunk in chunks:
+            with wave.open(str(chunk)) as source:
+                if (source.getnchannels(), source.getsampwidth(), source.getframerate()) != (1, 2, 16000):
+                    raise ValueError('Unexpected microphone audio format')
+                target.writeframes(source.readframes(source.getnframes()))
+
+
+def publish(job, **status):
+    pending = job / 'status.new'
+    pending.write_text(json.dumps(status, ensure_ascii=False))
+    pending.replace(job / 'status.json')
+
+
+def record_session(job, language):
+    proc = subprocess.Popen([str(ROOT / 'herdr-recorder'), str(job / 'audio.wav'),
+        str(job / 'stop'), str(job / 'ready')], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    text = ''
+    count = 0
+    deadline = time.monotonic() + 155
+    try:
+        while True:
+            finished = proc.poll() is not None
+            if (job / 'cancel').exists():
+                (job / 'stop').touch()
+                proc.wait(timeout=5)
+                return ''
+            if time.monotonic() > deadline and not finished:
+                raise ValueError('Recording timed out')
+            chunks = sorted(job.glob('chunk-*.wav'))
+            if len(chunks) != count:
+                count = len(chunks)
+                publish(job, ready=True, phase='finalizing' if finished else 'recording', text=text)
+                merge_chunks(chunks, job / 'preview.wav')
+                if has_speech(job / 'preview.wav'):
+                    text = transcribe(job / 'preview.wav', language)
+                publish(job, ready=True, phase='finalizing' if finished else 'recording', text=text)
+            if finished:
+                error = proc.stderr.read().decode(errors='replace')
+                if proc.returncode:
+                    raise ValueError(error.strip() or 'Microphone recording failed')
+                if not text:
+                    raise ValueError('No speech detected. Please try again.')
+                return text
+            time.sleep(0.15)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+        proc.stderr.close()
+
+
 def main():
     os.umask(0o077)
     parser = argparse.ArgumentParser()
@@ -65,24 +120,20 @@ def main():
         if args.action == 'cancel':
             (job / 'cancel').touch()
     elif args.action == 'status':
-        print(json.dumps({'ready': (job / 'ready').exists()}))
+        status_file = job / 'status.json'
+        status = json.loads(status_file.read_text()) if status_file.exists() else {}
+        status['ready'] = (job / 'ready').exists()
+        print(json.dumps(status, ensure_ascii=False))
     elif args.action == 'record':
         if args.value not in ('vi', 'en', 'auto'):
             raise ValueError('Unsupported language')
-        audio = job / 'audio.wav'
         try:
-            result = subprocess.run([str(ROOT / 'herdr-recorder'), str(audio), str(job / 'stop'), str(job / 'ready')],
-                capture_output=True, text=True, timeout=155)
-            if result.returncode:
-                raise ValueError(result.stderr.strip() or 'Recording failed')
-            if (job / 'cancel').exists():
-                print(json.dumps({'text': ''}))
-                return
-            text = transcribe(audio, args.value)
+            text = record_session(job, args.value)
             print(json.dumps({'text': text}, ensure_ascii=False))
         finally:
-            audio.unlink(missing_ok=True)
-            for name in ('stop', 'ready', 'cancel'):
+            for path in job.glob('*.wav'):
+                path.unlink(missing_ok=True)
+            for name in ('stop', 'ready', 'cancel', 'status.json', 'status.new'):
                 (job / name).unlink(missing_ok=True)
             try:
                 job.rmdir()

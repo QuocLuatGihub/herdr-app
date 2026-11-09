@@ -1051,6 +1051,8 @@ including a small herdr-core skill you can install with the user's permission.
 `bash scripts/install-macos-custom` installs the personal `voice` mod and
 `voice-custom` layout in the separate `~/.config/herdr-app-custom` home.
 `custom/voice/README.md` describes local Whisper dictation, microphone permission,
-explicit terminal targeting, reviewed sends, and user-triggered read-aloud.
+explicit terminal targeting, live transcript previews, silence detection,
+reviewed sends, and user-triggered read-aloud. Send can end recording and wait
+for final recognition before delivery; a separate Stop click is optional.
 This mod adds no core commands. Cmd+Shift+V starts/stops recording only when
 the mod is present; microphone capture never starts automatically.

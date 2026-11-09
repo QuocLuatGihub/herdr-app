@@ -45,4 +45,5 @@ keys.setdefault('global', {}).setdefault('cmd-shift-v', 'voice.record')
 keys_file.write_text(json.dumps(keys, indent=2) + '\n')
 PY
 "$voice/herdr-recorder" --check
+"$voice/herdr-recorder" --self-test
 /usr/bin/python3 "$voice/voice.py" check

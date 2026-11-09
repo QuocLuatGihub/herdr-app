@@ -6,7 +6,26 @@ func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data((message + "\n").utf8))
     exit(1)
 }
+struct SpeechGate {
+    var lastVoice: Double? = nil
+    mutating func stop(power: Float, elapsed: Double) -> Bool {
+        if power > -42 { lastVoice = elapsed }
+        if let last = lastVoice { return elapsed - last >= 2.0 }
+        return elapsed >= 10.0
+    }
+}
 let args = CommandLine.arguments
+if args.count == 2 && args[1] == "--self-test" {
+    var gate = SpeechGate()
+    precondition(!gate.stop(power: -80, elapsed: 1))
+    precondition(!gate.stop(power: -20, elapsed: 2))
+    precondition(!gate.stop(power: -80, elapsed: 3))
+    precondition(gate.stop(power: -80, elapsed: 4.1))
+    var silent = SpeechGate()
+    precondition(silent.stop(power: -80, elapsed: 10))
+    print("Silence detection tests passed")
+    exit(0)
+}
 if args.count == 2 && args[1] == "--check" {
     print("Herdr Voice recorder ready")
     exit(0)
@@ -33,14 +52,35 @@ let settings: [String: Any] = [
     AVLinearPCMIsBigEndianKey: false
 ]
 do {
-    let recorder = try AVAudioRecorder(url: url, settings: settings)
-    guard recorder.prepareToRecord(), recorder.record() else { fail("Could not start microphone recording.") }
+    let directory = url.deletingLastPathComponent()
+    var index = 0
+    let active = directory.appendingPathComponent("recording.wav")
+    func begin() throws -> AVAudioRecorder {
+        let recorder = try AVAudioRecorder(url: active, settings: settings)
+        recorder.isMeteringEnabled = true
+        guard recorder.prepareToRecord(), recorder.record() else { fail("Could not start microphone recording.") }
+        return recorder
+    }
+    var recorder = try begin()
     try Data("ready".utf8).write(to: URL(fileURLWithPath: ready), options: .atomic)
-    let deadline = Date().addingTimeInterval(60)
-    while Date() < deadline && !FileManager.default.fileExists(atPath: stop) {
+    let started = Date()
+    var segmentStarted = Date()
+    var gate = SpeechGate()
+    while Date().timeIntervalSince(started) < 60 && !FileManager.default.fileExists(atPath: stop) {
         RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        recorder.updateMeters()
+        if gate.stop(power: recorder.averagePower(forChannel: 0), elapsed: Date().timeIntervalSince(started)) { break }
+        if Date().timeIntervalSince(segmentStarted) >= 3 {
+            recorder.stop()
+            let chunk = directory.appendingPathComponent(String(format: "chunk-%03d.wav", index))
+            try FileManager.default.moveItem(at: active, to: chunk)
+            index += 1
+            recorder = try begin()
+            segmentStarted = Date()
+        }
     }
     recorder.stop()
-    guard let size = try FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber, size.intValue > 44 else { fail("No audio was recorded.") }
-    print(url.path)
+    let chunk = directory.appendingPathComponent(String(format: "chunk-%03d.wav", index))
+    try FileManager.default.moveItem(at: active, to: chunk)
+    print(directory.path)
 } catch { fail(error.localizedDescription) }

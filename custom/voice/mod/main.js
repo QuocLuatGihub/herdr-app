@@ -31,14 +31,16 @@ export default class Voice extends View {
       }
     });
     cx.timer.every(1000, cx => {
-      if (!this.recording || this.polling) return;
+      if (!this.recordJob || this.polling) return;
       this.polling = true;
       const job = this.recordJob;
       cx.spawn(async cx => {
         try {
           const r = await this.worker("status", job);
-          if (this.recordJob === job && this.recording && JSON.parse(r.stdout).ready) {
-            this.note = "Đang ghi âm · bấm Dừng để nhận chữ (tối đa 60 giây).";
+          const status = JSON.parse(r.stdout);
+          if (this.recordJob === job && status.ready) {
+            if (status.text) this.applyLive(status.text);
+            this.note = status.phase === "finalizing" ? "Đang chốt nội dung…" : "Đang nghe · chữ cập nhật sau vài giây. Ngừng nói để tự kết thúc, hoặc bấm Gửi.";
             cx.notify();
           }
         } catch {} finally { this.polling = false; }
@@ -53,26 +55,42 @@ export default class Voice extends View {
     if (this.busy || this.speaking) return;
     this.target = address; this.error = null; this.response.set_value(""); cx.notify();
   }
+  applyLive(text) {
+    // Never replace edits the person has made while a partial result was in flight.
+    if (this.draft.value() !== this.liveApplied) return;
+    this.liveApplied = this.liveBase + text;
+    this.draft.set_value(this.liveApplied);
+  }
   toggleRecord(cx) {
     if (this.recording) { this.stopRecord(cx); return; }
     if (this.busy || this.speaking) return;
     if (!liveTarget(terminals(), this.target)) { this.error = "Chọn một terminal còn hoạt động trước."; cx.notify(); return; }
+    this.liveBase = this.draft.value().trim();
+    this.liveBase = this.liveBase ? this.liveBase + "\n" : "";
+    this.liveApplied = this.draft.value(); this.sendAfterRecord = false;
     this.recordJob = this.job(); const job = this.recordJob;
     this.busy = true; this.recording = true; this.error = null;
     this.note = "Đang mở mic… Cho phép Microphone nếu macOS hỏi."; cx.notify();
     cx.spawn(async cx => {
+      let success = false;
       try {
         const r = await this.worker("record", job, this.language);
         if (r.code !== 0) throw new Error(r.stderr || "Không ghi âm được.");
         const text = JSON.parse(r.stdout).text;
         if (!this.closed) {
-          this.draft.set_value(text);
+          this.applyLive(text);
+          success = true;
           this.note = "Đã nhận chữ. Kiểm tra nội dung và terminal, rồi bấm Gửi.";
         }
       } catch (e) { if (!this.closed) this.error = String(e.message ?? e); }
       finally {
+        const shouldSend = this.sendAfterRecord && success;
+        this.sendAfterRecord = false;
         this.recording = false; this.busy = false; this.recordJob = null;
-        if (!this.closed) cx.notify();
+        if (!this.closed) {
+          cx.notify();
+          if (shouldSend) this.send(cx);
+        }
       }
     });
   }
@@ -86,6 +104,11 @@ export default class Voice extends View {
     });
   }
   send(cx) {
+    if (this.recordJob && this.busy && this.draft.value().trim()) {
+      this.sendAfterRecord = true;
+      this.stopRecord(cx);
+      return;
+    }
     if (this.busy || !this.draft.value().trim()) return;
     const target = this.target, text = this.draft.value();
     if (!liveTarget(terminals(), target)) { this.error = "Terminal đã đóng hoặc mất kết nối. Chọn lại trước khi gửi."; cx.notify(); return; }
@@ -149,7 +172,7 @@ export default class Voice extends View {
       .text_size(12).opacity(enabled ? 1 : 0.4).when(enabled, el => el.cursor_pointer().on_click((_e, cx) => action(cx))).child(text);
     return v_flex().id("voice-panel").size_full().min_h(0).p(14).gap(10).bg(t.surface).text_color(t.foreground)
       .child(h_flex().items_center().gap(8).child(div().flex_1().font_semibold().child("Voice · trên Mac"))
-        .child(label("⌘⇧V ghi / dừng")))
+        .child(label("⌘⇧V bật mic")))
       .child(label("GỬI TỚI TERMINAL"))
       .child(v_flex().max_h(110).overflow_y_scrollbar().gap(4).children(all.map(item =>
         div().id("voice-target-" + item.address).px(8).py(6).rounded(6)
@@ -160,16 +183,16 @@ export default class Voice extends View {
       .child(h_flex().gap(6).children(["vi", "en", "auto"].map(lang => button("voice-lang-" + lang,
         lang === "vi" ? "Tiếng Việt" : lang === "en" ? "English" : "Tự nhận", !locked,
         cx => { this.language = lang; cx.notify(); }, this.language === lang))))
-      .child(button("voice-record", this.recording ? "■ Dừng & nhận chữ" : this.busy ? "Đang xử lý…" : "● Ghi âm", this.recording || (!locked && !!target), cx => this.toggleRecord(cx), true))
+      .child(button("voice-record", this.recording ? "■ Dừng & nhận chữ" : this.busy ? "Đang xử lý…" : "● Bật mic", this.recording || (!locked && !!target), cx => this.toggleRecord(cx), true))
       .child(div().text_size(11).text_color(t.muted).child(this.note))
       .when(!!this.error, el => el.child(div().text_size(11).text_color(t.blocked).child(this.error)))
       .child(label("KIỂM TRA / SỬA LỜI NHẮN"))
       .child(Editor.new(this.draft).h(125).min_h(80).rounded(6).border_1().border_color(t.border))
-      .child(button("voice-send", "Gửi → " + (this.target || "chưa chọn terminal"), !locked && !!target && !!this.draft.value().trim(), cx => this.send(cx), true))
+      .child(button("voice-send", "Gửi → " + (this.target || "chưa chọn terminal"), (!locked || !!this.recordJob) && !!target && !!this.draft.value().trim(), cx => this.send(cx), true))
       .child(h_flex().gap(6)
         .child(button("voice-read", "Lấy phản hồi", !locked && !!target, cx => this.read(cx)))
         .child(button("voice-speak", this.speaking ? "■ Ngừng đọc" : "Đọc nội dung", this.speaking || (!this.busy && !!this.response.value().trim()), cx => this.speak(cx))))
       .child(Editor.new(this.response).flex_1().min_h(100).rounded(6).border_1().border_color(t.border))
-      .child(label("Chỉ gửi khi bấm Gửi. Audio được xoá sau nhận dạng."));
+      .child(label("Tự kết thúc sau 2 giây im lặng. Chỉ bấm Gửi để gửi."));
   }
 }

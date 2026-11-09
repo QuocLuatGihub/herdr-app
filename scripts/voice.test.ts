@@ -49,3 +49,53 @@ test('screen preview strips escape codes and bounds speech length', () => {
   expect(clean(JSON.stringify({text:'x'.repeat(7000)}))).toHaveLength(6000);
   expect(() => clean('{}')).toThrow();
 });
+
+test('live previews preserve edits and include an existing draft', () => {
+  const h=harness(async () => ({}));
+  h.voice.liveBase='Lời nhắn cũ\n'; h.voice.liveApplied=h.voice.draft.value();
+  h.voice.applyLive('phần mới');
+  expect(h.voice.draft.value()).toBe('Lời nhắn cũ\nphần mới');
+  h.voice.draft.set_value('anh đã sửa');
+  h.voice.applyLive('kết quả đến muộn');
+  expect(h.voice.draft.value()).toBe('anh đã sửa');
+});
+test('Send during recording requests finalization without sending partial text', () => {
+  let calls=0;
+  const h=harness(async () => {calls++;return {};});
+  h.voice.busy=true; h.voice.recordJob='recording';
+  let stopped=false; h.voice.stopRecord=() => {stopped=true;};
+  h.voice.send(h.cx);
+  expect(h.voice.sendAfterRecord).toBe(true);
+  expect(stopped).toBe(true);
+  expect(calls).toBe(0);
+});
+
+test('one Send click waits for the final transcript, then delivers exactly once', async () => {
+  let sent: string[][]=[];
+  const h=harness(async args => {sent.push(args);return {code:0,stdout:'{}'};});
+  h.voice.draft.set_value('');
+  let finish: any;
+  h.voice.worker=(action: string) => action==='record'
+    ? new Promise(resolve => {finish=resolve;})
+    : Promise.resolve({code:0,stdout:'{}'});
+  h.voice.toggleRecord(h.cx);
+  h.voice.applyLive('kiểm tra');
+  h.voice.send(h.cx);
+  expect(sent).toHaveLength(0);
+  finish({code:0,stdout:JSON.stringify({text:'kiểm tra dự án'})});
+  await h.pending[0]; await Promise.all(h.pending);
+  expect(sent).toEqual([['send','--json','remote/t7','kiểm tra dự án']]);
+});
+test('recognition failure never triggers a queued Send', async () => {
+  let sends=0;
+  const h=harness(async () => {sends++;return {};});
+  let finish: any;
+  h.voice.worker=(action: string) => action==='record'
+    ? new Promise(resolve => {finish=resolve;})
+    : Promise.resolve({code:0,stdout:'{}'});
+  h.voice.toggleRecord(h.cx); h.voice.send(h.cx);
+  finish({code:1,stderr:'Microphone denied'});
+  await Promise.all(h.pending);
+  expect(sends).toBe(0);
+  expect(h.voice.draft.value()).toBe('kiểm tra project');
+});
