@@ -33,3 +33,22 @@ test('daemon status replaces unknown only while fresh and for the exact thread',
  const real={address:'remote/t2',status:'blocked',app:'codex'};
  expect(mergeAgents([real],[pane('remote/t2','codex')],[terminal('remote/t2')],spaces,snapshot,2000)).toEqual([real]);
 });
+
+const loginSource = (await readFile(new URL('../custom/agents/login.js',import.meta.url),'utf8'))
+ .replace(/^import .*;\n/gm,'').replaceAll('export function ','function ');
+function loginHarness(list:any[]) {
+ const calls:any[]=[];
+ const api=new Function('terminals','run','home',`${loginSource}; return {findLogin,openLogin};`)(()=>list,(...args:any[])=>calls.push(args),()=>'/Users/test');
+ return {api,calls};
+}
+test('SSH login UI focuses an existing prompt only for the exact machine',()=>{
+ const h=loginHarness([{state:'live',address:'t4',foreground:{argv:['hc','machine','login','vps1']}}]);
+ h.api.openLogin({name:'vps1'});
+ expect(h.calls).toEqual([['pane.focus',{terminal:'t4'}]]);
+ expect(h.api.findLogin([{state:'live',address:'t4',foreground:{argv:['hc','machine','login','vps10']}}],'vps1')).toBeUndefined();
+});
+test('SSH login UI opens a local prompt and never mistakes a finished login shell for one',()=>{
+ const h=loginHarness([{state:'live',address:'t4',argv:['hc','machine','login','vps1'],foreground:{argv:['zsh','-l']}}]);
+ h.api.openLogin({name:'vps1'});
+ expect(h.calls).toEqual([['space.new',{name:'SSH · vps1',folder:'/Users/test',machine:null,argv:['/Users/test/.local/bin/hc','machine','login','vps1']}]]);
+});

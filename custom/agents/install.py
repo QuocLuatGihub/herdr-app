@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def generate(source):
     text = (ROOT / 'defaults/mods' / source / 'main.js').read_text()
-    imports = ['panes'] if source in ('pane', 'tabs') else ['agents', 'panes'] if source == 'agents' else ['agents']
+    imports = ['panes'] if source in ('pane', 'tabs', 'spaces') else ['agents', 'panes'] if source == 'agents' else ['agents']
     # Replace only imported readers, leaving all upstream behavior intact.
     def rewrite(match):
         names = [n.strip() for n in match.group(1).split(',')]
@@ -55,6 +55,18 @@ def generate(source):
         .tooltip(this.markError || (p.manualAgent ? "Bỏ gán Codex cho terminal này" : "Gán terminal này là Codex (Screen/tmux)"))
         .on_click((_e, cx) => { cx.stop_propagation(); this.mark(p, cx); }).child(p.manualAgent ? "Bỏ gán" : "Gán Codex")))
       ''' + needle)
+    if source == 'spaces':
+        anchor = '.when(rebuilt, el => el.child(h_flex().flex_none().gap(3).items_center()'
+        if text.count(anchor) != 1:
+            raise ValueError('Upstream machine header changed; review SSH login UI')
+        text = 'import { openLogin } from "./login.js";\n' + text
+        text = text.replace('.when(!connected && !rebuilt,', '.when(!connected && !rebuilt && machine?.state !== "needs_login",')
+        text = text.replace(anchor, '''.when(machine?.state === "needs_login", el => el.child(div().id(`machine-login-${m}`).flex_none().px(6).py(3).rounded(5)
+            .text_color(t.blocked).bg(t.raised).cursor_pointer().hover(s => s.bg(t.hover))
+            .tooltip("Mở đăng nhập SSH trong app; không cần gõ lệnh")
+            .on_click((_e, cx) => { cx.stop_propagation(); openLogin(machine); })
+            .child("Đăng nhập")))
+          ''' + anchor)
     if source == 'workspace-status':
         text = 'import { observe } from "./observer.js";\n' + text
         text = text.replace('export default class WorkspaceStatus extends View {',
@@ -64,19 +76,20 @@ def generate(source):
 
 def install(app_home):
     app_home = Path(app_home)
-    for source in ('agents', 'pane', 'tabs', 'workspace-status'):
+    for source in ('agents', 'pane', 'tabs', 'workspace-status', 'spaces'):
         destination = app_home / 'mods' / ('custom-' + source)
         destination.mkdir(parents=True, exist_ok=True)
         (destination / 'main.js').write_text(generate(source))
         shutil.copy2(ROOT / 'defaults/mods' / source / 'mod.json', destination / 'mod.json')
         shutil.copy2(ROOT / 'custom/agents/identity.js', destination / 'identity.js')
+    shutil.copy2(ROOT / 'custom/agents/login.js', app_home / 'mods/custom-spaces/login.js')
     for name in ('observer.js', 'status.py', 'screen_scroll.py'):
         shutil.copy2(ROOT / 'custom/agents' / name, app_home / 'mods/custom-workspace-status' / name)
     shutil.copytree(ROOT / 'custom/agents/manager', app_home / 'mods/agent-manager', dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns('gpui-kit.d.ts', 'jsconfig.json', '.gitignore'))
     path = app_home / 'layouts/voice-custom.json'
     layout = json.loads(path.read_text())
-    mapping = {s: 'custom-' + s for s in ('agents', 'pane', 'tabs', 'workspace-status')}
+    mapping = {s: 'custom-' + s for s in ('agents', 'pane', 'tabs', 'workspace-status', 'spaces')}
     def visit(value):
         if isinstance(value, dict):
             if value.get('mod') in mapping:

@@ -1081,3 +1081,7 @@ clicking **Về trực tiếp** returns to live output using a private Screen ke
 it never sends a bare Escape that could interrupt Codex. The setup
 is bound to the attachment PID and protocol version. Local terminals and
 unconfigured attachments do not receive these private keys.
+
+In this fork's Custom sidebar, a machine in `needs_login` state has a
+**Đăng nhập** button. It opens or focuses that machine's active SSH login tab
+inside the app; enter credentials in the SSH prompt, not in a command or chat.

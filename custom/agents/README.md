@@ -50,3 +50,12 @@ The safe return-to-live path is regression-tested with a synthetic, headless
 Screen job: `HC_SESSION=<session> python3 scripts/screen-live-smoke.py
 --machine <connected-linux-machine>`. It verifies history freezes, new output
 resumes, repeated return-to-live is harmless, and the child receives no keys.
+
+## SSH login from the sidebar
+
+When a machine needs SSH authentication, **Đăng nhập** appears beside its name.
+Clicking it focuses an existing active login prompt or opens a local login tab
+inside Herdr Custom. Enter the password there; no shell command is required.
+The UI does not collect or store the password. Reconnect follows successful
+authentication through `hc machine login`. A completed login shell is not reused
+as though it were still a password prompt.
